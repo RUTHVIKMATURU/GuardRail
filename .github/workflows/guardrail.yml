@@ -8,32 +8,33 @@ on:
 
 permissions:
   contents: read
-  security-events: write   # lets Trivy upload SARIF to the Security tab
+  pull-requests: write     # lets Gitleaks comment on pull requests
 
 jobs:
   secrets-scan:
     name: Gitleaks - secrets detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0   # full history so old commits are scanned too
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   vulnerability-scan:
     name: Trivy - image and dependency CVEs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build Docker image
         run: docker build -t guardrail-app:${{ github.sha }} .
 
       # 1) Report step: never fails, always produces the evidence
       - name: Trivy report (image)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: guardrail-app:${{ github.sha }}
           format: table
@@ -42,7 +43,7 @@ jobs:
           exit-code: "0"
 
       - name: Trivy report (dependencies, SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -53,7 +54,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: guardrail-scan-reports
           path: |
@@ -62,7 +63,7 @@ jobs:
 
       # 2) Gate step: fails the build on serious, fixable issues
       - name: Trivy gate (image)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: guardrail-app:${{ github.sha }}
           format: table
@@ -71,7 +72,7 @@ jobs:
           exit-code: "1"
 
       - name: Trivy gate (dependencies)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
