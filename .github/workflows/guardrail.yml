@@ -34,7 +34,7 @@ jobs:
 
       # 1) Report step: never fails, always produces the evidence
       - name: Trivy report (image)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: guardrail-app:${{ github.sha }}
           format: table
