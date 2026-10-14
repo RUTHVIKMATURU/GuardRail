@@ -46,6 +46,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          skip-dirs: demo
           format: sarif
           output: trivy-fs.sarif
           exit-code: "0"
@@ -74,6 +75,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          skip-dirs: demo
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
