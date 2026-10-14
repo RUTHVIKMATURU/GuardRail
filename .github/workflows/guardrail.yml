@@ -43,7 +43,7 @@ jobs:
           exit-code: "0"
 
       - name: Trivy report (dependencies, SARIF)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: .
@@ -63,7 +63,7 @@ jobs:
 
       # 2) Gate step: fails the build on serious, fixable issues
       - name: Trivy gate (image)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: guardrail-app:${{ github.sha }}
           format: table
@@ -72,7 +72,7 @@ jobs:
           exit-code: "1"
 
       - name: Trivy gate (dependencies)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: .
