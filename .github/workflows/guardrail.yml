@@ -8,75 +8,73 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write     # lets Gitleaks comment on pull requests
 
 jobs:
   secrets-scan:
     name: Gitleaks - secrets detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history so old commits are scanned too
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
 
   vulnerability-scan:
     name: Trivy - image and dependency CVEs
     runs-on: ubuntu-latest
+    env:
+      TRIVY: aquasec/trivy:0.57.1
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t guardrail-app:${{ github.sha }} .
+        run: |
+          docker build -t guardrail-app:scan .
+          mkdir -p reports "$HOME/.cache/trivy"
 
-      # 1) Report step: never fails, always produces the evidence
+      # 1) Report steps: never fail, always produce evidence
       - name: Trivy report (image)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: guardrail-app:${{ github.sha }}
-          format: table
-          output: trivy-image-report.txt
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          exit-code: "0"
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD/reports:/reports" \
+            $TRIVY image --format table --exit-code 0 \
+            --output /reports/trivy-image-report.txt guardrail-app:scan
 
-      - name: Trivy report (dependencies, SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          skip-dirs: demo
-          format: sarif
-          output: trivy-fs.sarif
-          exit-code: "0"
+      - name: Trivy report (dependencies)
+        run: |
+          docker run --rm \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/src" \
+            -v "$PWD/reports:/reports" \
+            $TRIVY fs --skip-dirs demo --skip-dirs /src/demo \
+            --format table --exit-code 0 \
+            --output /reports/trivy-fs-report.txt /src
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: guardrail-scan-reports
-          path: |
-            trivy-image-report.txt
-            trivy-fs.sarif
+          path: reports/
 
-      # 2) Gate step: fails the build on serious, fixable issues
+      # 2) Gate steps: fail the build on serious, fixable issues
       - name: Trivy gate (image)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: guardrail-app:${{ github.sha }}
-          format: table
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            $TRIVY image --severity CRITICAL,HIGH --ignore-unfixed \
+            --exit-code 1 guardrail-app:scan
 
       - name: Trivy gate (dependencies)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          skip-dirs: demo
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          docker run --rm \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/src" \
+            $TRIVY fs --skip-dirs demo --skip-dirs /src/demo \
+            --severity CRITICAL,HIGH --ignore-unfixed \
+            --exit-code 1 /src
