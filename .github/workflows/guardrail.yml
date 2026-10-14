@@ -1,0 +1,79 @@
+name: GuardRail Security Pipeline
+
+on:
+  push:
+    branches: [main, "demo-*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # lets Trivy upload SARIF to the Security tab
+
+jobs:
+  secrets-scan:
+    name: Gitleaks - secrets detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so old commits are scanned too
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  vulnerability-scan:
+    name: Trivy - image and dependency CVEs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t guardrail-app:${{ github.sha }} .
+
+      # 1) Report step: never fails, always produces the evidence
+      - name: Trivy report (image)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: guardrail-app:${{ github.sha }}
+          format: table
+          output: trivy-image-report.txt
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Trivy report (dependencies, SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: "0"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardrail-scan-reports
+          path: |
+            trivy-image-report.txt
+            trivy-fs.sarif
+
+      # 2) Gate step: fails the build on serious, fixable issues
+      - name: Trivy gate (image)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: guardrail-app:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy gate (dependencies)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
